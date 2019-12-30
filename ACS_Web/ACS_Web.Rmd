@@ -1,0 +1,624 @@
+---
+title: "CID Demographics"
+subtitle: "Based on Census ACS Data"
+runtime: shiny
+output: ioslides_presentation
+---
+
+<style type="text/css">
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE}
+library(plotly)
+library(dplyr)
+library(stringr)
+```
+
+```{r data, echo=FALSE}
+# read the data
+edu <- read.csv("ACS_Web/edu.csv")
+income <- read.csv("ACS_Web/income.csv")
+house <- read.csv("ACS_Web/house.csv")
+age_sex <- read.csv("ACS_Web/age_sex.csv")
+
+# function organizing data frame for line plots
+lineplot.df_func <- function(df) {
+  lineplot.df <- t(as.matrix(df))
+  lineplot.df <- lineplot.df[-1,]
+  lineplot.df <- as.data.frame(lineplot.df)
+  lineplot.df$year <- 
+    c(as.numeric(as.character(str_sub(colnames(df)[2], 2))):as.numeric(as.character(str_sub(colnames(df)[ncol(df)], 2))))
+  
+  for (i in 1:(ncol(lineplot.df)-1)){
+    lineplot.df[,i] <- as.numeric(as.character(lineplot.df[,i]))
+  }
+  
+  return(lineplot.df)
+}
+
+# function setting the range of the line plot axis
+range_func <- function(df){
+  range <- c(as.numeric(str_sub(rownames(df)[1],2))-.2,as.numeric(str_sub(rownames(df)[nrow(df)],2))+.2)
+  return(range)
+}
+
+# data frame formatted for line plots
+lineplot.df.edu <- lineplot.df_func(edu)
+lineplot.df.income <- lineplot.df_func(income)
+lineplot.df.house <- lineplot.df_func(house)
+lineplot.df.age_sex <- lineplot.df_func(age_sex)
+```
+
+```{r age_sex, echo=FALSE}
+# ui for overall population and median age
+overall.ui <- fluidPage(
+  fluidRow(
+    column(6, plotlyOutput("pop.plot")),
+    column(6, plotlyOutput("median.age.plot"))
+    )
+  )
+
+# ui for age, pie chart + line plot by age
+age.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(age_sex)[2:ncol(age_sex)])),
+    column(6, plotlyOutput("age.pie")),
+    column(6, plotlyOutput("age.plot"))
+    )
+  )
+
+# ui for sex, pie chart + line plot by sex
+sex.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(age_sex)[2:ncol(age_sex)])),
+    column(6, plotlyOutput("sex.pie")),
+    column(6, plotlyOutput("sex.plot"))
+    )
+  )
+
+# server for age, sex data
+dem.server <- function(input, output) {
+  
+  # overall population line plot
+  output$pop.plot <- 
+    renderPlotly({
+    plot_ly(lineplot.df.age_sex, 
+            x = ~year, 
+            y = ~V1, 
+            type = 'scatter', 
+            mode = 'lines+markers') %>% 
+      layout(title = "Population", 
+             xaxis = list(title = "", range =  range_func(lineplot.df.age_sex)), 
+             yaxis = list(title = "")) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # median age line plot
+  output$median.age.plot <- renderPlotly({
+    plot_ly(lineplot.df.age_sex, 
+            x = ~year, 
+            y = ~V4, 
+            type = 'scatter', 
+            mode = 'lines+markers') %>% 
+      layout(title = "Median Age", 
+             xaxis = list(title = "", range =  range_func(lineplot.df.age_sex)), 
+             yaxis = list(title = "")) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # data frame for age pie chart reactive to input year
+  age.pie.df <- reactive({
+    data.frame(Category = c("Age < 24", "Age 25-44", "Age 45-64", "Age > 65"), 
+               Overall = age_sex[5:8,][,input$year])
+  })
+  
+  # data frame for sex pie chart reactive to input year
+  sex.pie.df <- reactive({
+    data.frame(Category = c("Male","Female"), 
+               Overall = age_sex[2:3,][,input$year])
+  })
+  
+  # age pie chart created from reactive age.pie.df
+  output$age.pie <- renderPlotly({
+    plot_ly(age.pie.df(), 
+            labels = ~Category, 
+            values = ~Overall, 
+            type = 'pie', 
+            sort = FALSE, 
+            hole = 0.6) %>% 
+      layout(title = paste("Age Distribution in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+
+  # sex pie chart created from reactive sex.pie.df
+  output$sex.pie <- renderPlotly({
+    plot_ly(sex.pie.df(), 
+            labels = ~Category, 
+            values = ~Overall, 
+            type = 'pie', 
+            sort = FALSE, 
+            hole = 0.6, 
+            marker = list(colors = c("#1f77b4", "#d62728"))) %>% 
+      layout(title = paste("Gender Distribution in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # population line plot by age groups
+  output$age.plot <- renderPlotly({
+    plot_ly(lineplot.df.age_sex, 
+            x = ~year, 
+            y = ~V5, 
+            type = 'scatter', 
+            mode = 'lines+markers', 
+            name = 'Age < 24') %>%
+      layout(title = "Population by Age", 
+             xaxis = list(title = "", range = range_func(lineplot.df.age_sex)), 
+             yaxis = list(title = "Population"), 
+             showlegend = FALSE,
+             hovermode = 'compare') %>%
+      add_trace(y = ~V6, 
+                name = 'Age 25-44') %>%
+      add_trace(y = ~V7, 
+                name = 'Age 45-65') %>%
+      add_trace(y = ~V8, 
+                name = 'Age > 65') %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # population line plot by sex  
+  output$sex.plot <- renderPlotly({
+    plot_ly(lineplot.df.age_sex, 
+            x = ~year, 
+            y = ~V2, 
+            type = 'scatter', 
+            mode = 'lines+markers', 
+            name = 'Male') %>% 
+      layout(title = "Population by Gender", 
+             xaxis = list(title = "", 
+                          range =  range_func(lineplot.df.age_sex)), 
+             yaxis = list(title = "Population"), 
+             showlegend = FALSE, 
+             hovermode = 'compare') %>%
+      add_trace(y = ~V3, 
+                name = 'Female', 
+                marker = list(color = "#d62728"), 
+                line = list(color = "#d62728")) %>%
+      config(displayModeBar = FALSE)
+  })
+}
+```
+
+```{r edu, echo=FALSE}
+# ui for enrollment
+enroll.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(edu)[2:ncol(edu)])),
+    column(6, plotlyOutput("enroll.pie")),
+    column(6, plotlyOutput("enroll.line"))
+    )
+  )
+
+# ui for educational attainment
+edulevel.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(edu)[2:ncol(edu)])),
+    column(6, plotlyOutput("edulevel.pie")),
+    column(6, plotlyOutput("edulevel.line"))
+    )
+  )
+
+# server for education data
+edu.server <- function(input, output) {
+  
+  # data frame for enrollment pie chart reactive to input year
+  enroll.pie.df <- reactive({
+    data.frame(Category = c("Preschool & Kindergarten","K1-8","K9-12","College or Grad School"), 
+               Overall = edu[1:4,][,input$year])
+  })
+  
+  # data frame for educational attainment pie chart reactive to input year
+  edulevel.pie.df <- reactive({
+    data.frame(Category = c("< 12th grade", "Highschool graduates or equivalent", "Some college","Associate's degree", "Bachelor's degree","Master's and beyond"), 
+               Overall = edu[5:10,][,input$year])
+  })
+  
+  # enrollment pie chart created from reactive enroll.pie.df
+  output$enroll.pie <- renderPlotly({
+    plot_ly(enroll.pie.df(), labels = ~Category, values = ~Overall, type = 'pie', sort = FALSE, hole = 0.6) %>% 
+      layout(title = paste("School Enrollment in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # enrolled population line plot by enrollment level
+  output$enroll.line <- renderPlotly({
+    plot_ly(lineplot.df.edu, x = ~year, y = ~V1, type = 'scatter', mode = 'lines+markers', name = 'Preschool&Kindergarten') %>%
+      layout(title = "School Enrollment", xaxis = list(title = "", range =  range_func(lineplot.df.edu)), yaxis = list(title = "Enrolled Population"), showlegend = FALSE, hovermode = 'compare') %>%
+      add_trace(y = ~V2, 
+                name = 'K1-8') %>%
+      add_trace(y = ~V3, 
+                name = 'K9-12') %>%
+      add_trace(y = ~V4, 
+                name = 'College or Grad School') %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # educational attainment pie chart created from reactive edulevel.pie.df
+  output$edulevel.pie <- renderPlotly({
+    plot_ly(edulevel.pie.df(), labels = ~Category, values = ~Overall, type = 'pie', sort = FALSE, hole = 0.6) %>% 
+      layout(title = paste("Educational Attainment in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # educated population line plot by educational level
+  output$edulevel.line <- renderPlotly({
+    plot_ly(lineplot.df.edu, x = ~year, y = ~V5, type = 'scatter', mode = 'lines+markers', name = '< 12th grade') %>% 
+      layout(title = "Educational Attainment", xaxis = list(title = "", range = range_func(lineplot.df.edu)), yaxis = list(title = "Population"), showlegend = FALSE, hovermode = 'compare') %>%
+      add_trace(y = ~V6, 
+                name = 'Highschool graduates or equivalent') %>%
+      add_trace(y = ~V7, 
+                name = 'Some college') %>%
+      add_trace(y = ~V8, 
+                name = "Associate's degree") %>%
+      add_trace(y = ~V9, 
+                name = "Bachelor's degree") %>%
+      add_trace(y = ~V10, 
+                name = "Master's and beyond") %>%
+      config(displayModeBar = FALSE)
+  }) 
+}
+```
+
+```{r income, echo=FALSE}
+# ui for median and mean income
+income.line.ui <- fluidPage(
+  fluidRow(
+    column(6, plotlyOutput("median.line")),
+    column(6, plotlyOutput("mean.line"))
+    )
+  )
+
+# ui for charts by income level
+income.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(income)[2:ncol(income)])),
+    column(6, plotlyOutput("income.pie")),
+    column(6, plotlyOutput("income.line"))
+    )
+  )
+
+# ui for charts by occupational form
+occupation.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(income)[2:ncol(income)])),
+    column(6, plotlyOutput("occupation.pie")),
+    column(6, plotlyOutput("occupation.line"))
+    )
+  )
+
+# server for income data
+income.server <- function(input, output) {
+  
+  # line plot of median income
+  output$median.line <- renderPlotly({
+    plot_ly(lineplot.df.income, 
+            x = ~year, 
+            y = ~V1, 
+            type = 'scatter', 
+            mode = 'lines+markers') %>%
+      layout(title = "Median Household Income", 
+             xaxis = list(title = "", range = range_func(lineplot.df.income)), 
+             yaxis = list(title = "", tickprefix = "$")) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # line plot of mean income
+  output$mean.line <- renderPlotly({
+    plot_ly(lineplot.df.income, 
+            x = ~year, 
+            y = ~V2, 
+            type = 'scatter', 
+            mode = 'lines+markers') %>%
+      layout(title = "Mean Household Income", 
+             xaxis = list(title = "", range = range_func(lineplot.df.income)), 
+             yaxis = list(title = "", tickprefix = "$")) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # data frame for occupation pie chart reactive to input year
+  occupation.pie.df <- reactive({
+    data.frame(Category = c('Management, business, science, arts', 'Service','Sales, office','Natural resources, construction, maintenance','Production, transportation, material moving'), 
+               Overall = income[3:7,][,input$year])
+  })
+  
+  # data frame for income level pie chart reactive to input year
+  income.pie.df <- reactive({
+    data.frame(Category = c('< $14,999', '$15,000-$34,999','$35,000-$74,999','$75,000-$149,999','> $150,000'), 
+               Overall = income[8:12,][,input$year])
+  })
+  
+  # occupation pie chart created from reactive occupation.pie.df
+  output$occupation.pie <- renderPlotly({
+    plot_ly(occupation.pie.df(), 
+            labels = ~Category, 
+            values = ~Overall, 
+            type = 'pie', 
+            sort = FALSE, 
+            hole = 0.6) %>% 
+      layout(title = paste("Workers' Occupations in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # income level pie chart created from reactive income.pie.df
+  output$income.pie <- renderPlotly({
+    plot_ly(income.pie.df(), 
+            labels = ~Category, 
+            values = ~Overall, 
+            type = 'pie', 
+            sort = FALSE, 
+            hole = 0.6) %>% 
+      layout(title = paste("Household Income Level in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # population line plot by occupational form
+  output$occupation.line <- renderPlotly({
+    plot_ly(lineplot.df.income, 
+            x = ~year, 
+            y = ~V3, 
+            type = 'scatter', 
+            mode = 'lines+markers', 
+            name = 'Management, business, science, arts') %>%
+      layout(title = "Workers by Occupational Forms", 
+             xaxis = list(title = "", range = range_func(lineplot.df.income)), 
+             yaxis = list(title = "Working Population"), 
+             showlegend = FALSE, 
+             hovermode = 'compare') %>%
+      add_trace(y = ~V4, 
+                name = 'Service') %>%
+      add_trace(y = ~V5, 
+                name = 'Sales, office') %>%
+      add_trace(y = ~V6, 
+                name = 'Natural Resources, construction, maintenance') %>%
+      add_trace(y = ~V7, 
+                name = 'Production, transportation, material moving') %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # population line plot by income level
+  output$income.line <- renderPlotly({
+    plot_ly(lineplot.df.income, 
+            x = ~year, 
+            y = ~V8, 
+            type = 'scatter', 
+            mode = 'lines+markers', 
+            name = '< $14,999') %>%
+      layout(title = "Households by Income Level", 
+             xaxis = list(title = "", range = range_func(lineplot.df.income)), 
+             yaxis = list(title = "Household"), 
+             showlegend = FALSE, 
+             hovermode = 'compare') %>%
+      add_trace(y = ~V9, 
+                name = '$15,000-$34,999') %>%
+      add_trace(y = ~V10, 
+                name = '$35,000-$74,999') %>%
+      add_trace(y = ~V11, 
+                name = '$75,000-$149,999') %>%
+      add_trace(y = ~V12, 
+                name = '> $150,000') %>%
+      config(displayModeBar = FALSE)
+  })
+}
+```
+
+```{r house, echo=FALSE}
+# ui for housing unit and vacancy
+overall.line.ui <- fluidPage(
+  fluidRow(
+    column(6, plotlyOutput("unit.line")), 
+    column(6, plotlyOutput("vacancy.line"))
+    )
+  )
+
+vacancy.rent.ui <- fluidPage(
+  fluidRow(
+    column(12, plotlyOutput("vacancy.rent.line"))
+    )
+  )
+
+# ui for charts by bedroom
+bedroom.ui <- fluidPage(
+  fluidRow(
+    selectInput("year", "Year:",
+                c(colnames(income)[2:ncol(income)])),
+    column(6, plotlyOutput("bedroom.pie")),
+    column(6, plotlyOutput("bedroom.line"))
+    )
+  )
+
+# server for house data
+house.server <- function(input, output) {
+  
+  # line plot of housing unit
+  output$unit.line <- renderPlotly({
+    plot_ly(lineplot.df.house, 
+            x = ~year, 
+            y = ~V1, 
+            type = 'scatter', 
+            mode = 'lines+markers') %>%
+      layout(title = "Total Housing Unit", 
+             xaxis = list(title = "", range = range_func(lineplot.df.house)), 
+             yaxis = list(title = "")) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  output$vacancy.rent.line <- renderPlotly({
+    plot_ly(lineplot.df.house, 
+            x = ~year, 
+            y = ~V2, 
+            type = 'scatter', 
+            mode = 'lines+markers',
+            name = 'Vacancy Rate') %>%
+      add_trace(y = ~V3, 
+                name = 'Median Rental Rate (per unit)', yaxis = "y2") %>%
+      layout(xaxis = list(title = "", range = range_func(lineplot.df.house)), 
+             yaxis = list(title = "Vacancy Rate", ticksuffix = "%"),
+             yaxis2 = list(overlaying = "y",side = "right", title = "Rental Rate (in dollars)", automargin = T, tickprefix = "$"),
+             hovermode = 'compare',
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # line plot of overall vacancy
+  output$vacancy.line <- renderPlotly({
+    plot_ly(lineplot.df.house, 
+            x = ~year, 
+            y = ~V2, 
+            type = 'scatter', 
+            mode = 'lines+markers',
+            name = 'Overall Vacancy Rate') %>%
+      layout(title = "Vacancy Rate", 
+             xaxis = list(title = "", range = range_func(lineplot.df.house)), 
+             yaxis = list(title = "", ticksuffix = "%"),
+             hovermode = 'compare',
+             legend = list(orientation = 'h')) %>%
+      add_trace(y = ~V4, 
+                name = 'Homeowner Vacancy Rate') %>%
+      add_trace(y = ~V5, 
+                name = 'Rental Vacancy Rate') %>%
+      config(displayModeBar = FALSE) 
+  })
+  
+  # data frame for bedroom pie chart reactive to input year
+  bedroom.pie.df <- reactive({
+    data.frame(Category = c("No bedroom","1 Bedroom","2 Bedrooms","3 Bedrooms","> 3 Bedrooms"), 
+               Overall = house[6:10,][,input$year])
+  })
+  
+  # bedroom pie chart created from reactive bedroom.pie.df
+  output$bedroom.pie <- renderPlotly({
+    plot_ly(bedroom.pie.df(), 
+            labels = ~Category, 
+            values = ~Overall, 
+            type = 'pie', 
+            sort = FALSE, 
+            hole = 0.6) %>% 
+      layout(title = paste("Housing Units by Bedrooms in ", str_sub(input$year, 2, 5), sep = ""), 
+             legend = list(orientation = 'h')) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # housing unit line plot by bedroom type
+  output$bedroom.line <- renderPlotly({
+    plot_ly(lineplot.df.house, 
+            x = ~year, 
+            y = ~V6, 
+            type = 'scatter', 
+            mode = 'lines+markers', 
+            name = 'No bedroom') %>%
+      layout(title = "Housing Units by Bedrooms", 
+             xaxis = list(title = "", range = range_func(lineplot.df.income)), 
+             yaxis = list(title = "Housing Units"), 
+             showlegend = FALSE, 
+             hovermode = 'compare') %>%
+      add_trace(y = ~V7, 
+                name = '1 Bedroom') %>%
+      add_trace(y = ~V8, 
+                name = '2 Bedrooms') %>%
+      add_trace(y = ~V9, 
+                name = '3 Bedrooms') %>%
+      add_trace(y = ~V10, 
+                name = '> 3 Bedrooms') %>%
+      config(displayModeBar = FALSE)
+  })
+}
+```
+
+## Introduction
+This is the intro
+
+- This is the intro
+
+## CID Population and Age Trend
+
+```{r, echo=FALSE}
+shinyApp(overall.ui, dem.server)
+```
+
+## CID Age Breakdown
+
+```{r, echo=FALSE}
+shinyApp(age.ui, dem.server)
+```
+
+## CID Gender Breakdown
+
+```{r, echo=FALSE}
+shinyApp(sex.ui, dem.server)
+```
+
+## CID School Enrollment (3 yrs >)
+
+```{r, echo=FALSE}
+shinyApp(enroll.ui, edu.server)
+```
+
+## CID Education Level (25 yrs >)
+
+```{r, echo=FALSE}
+shinyApp(edulevel.ui, edu.server)
+```
+
+## CID Income Level Trend
+
+```{r, echo=FALSE}
+shinyApp(income.line.ui, income.server)
+```
+
+## CID Income Level Breakdown
+
+```{r, echo=FALSE}
+shinyApp(income.ui, income.server)
+```
+
+## CID Occupational Form Breakdown
+
+```{r, echo=FALSE}
+shinyApp(occupation.ui, income.server)
+```
+
+## CID Housing Unit and Vacancy Trend
+
+```{r, echo=FALSE}
+shinyApp(overall.line.ui, house.server)
+```
+
+## CID Vacancy Rate v. Rental Rate
+
+```{r, echo=FALSE}
+shinyApp(vacancy.rent.ui, house.server)
+```
+
+## CID Bedroom Type Breakdown
+
+```{r, echo=FALSE}
+shinyApp(bedroom.ui, house.server)
+```

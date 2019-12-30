@@ -1,0 +1,12 @@
+name: ACS_Web
+title: ACS_Web
+username:
+account: tbuffington
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1614416
+bundleId: 2684451
+url: https://tbuffington.shinyapps.io/ACS_Web/
+when: 1576880250.25266
+asMultiple: FALSE
+asStatic: FALSE
